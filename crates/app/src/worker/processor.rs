@@ -82,32 +82,26 @@ pub async fn process(
             for finding in result.findings.iter_mut().take(config.max_llm_explains) {
                 let key = ExplainCache::make_key(&finding.detector_id, &finding.snippet);
 
-                let explanation = if let Ok(Some(cached)) = explain_cache.get(&key).await {
-                    Some(cached)
+                let (why, fix) = if let Ok(Some(cached)) = explain_cache.get(&key).await {
+                    cached
                 } else {
                     match llm.explain(&finding.detector_id, &finding.title, &finding.snippet).await {
                         Ok((why, fix)) => {
-                            let md = if fix.is_empty() {
-                                why.clone()
-                            } else {
-                                format!("{why}")
-                            };
-                            let _ = explain_cache.set(&key, &md).await;
-                            // Override the canned suggestion with the LLM's fix
-                            if !fix.is_empty() {
-                                finding.suggestion = Some(fix);
-                            }
-                            Some(md)
+                            let _ = explain_cache.set(&key, &why, &fix).await;
+                            (why, fix)
                         }
                         Err(e) => {
                             warn!("LLM explain failed for {}: {e}", finding.detector_id);
-                            None
+                            continue;
                         }
                     }
                 };
 
-                if let Some(text) = explanation {
-                    finding.details = Some(text);
+                if !why.is_empty() {
+                    finding.details = Some(why);
+                }
+                if !fix.is_empty() {
+                    finding.suggestion = Some(fix);
                 }
             }
         } else {

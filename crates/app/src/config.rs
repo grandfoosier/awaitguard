@@ -28,7 +28,7 @@ impl Config {
             github_app_id: env_req("GITHUB_APP_ID")?
                 .parse()
                 .context("GITHUB_APP_ID must be a number")?,
-            github_private_key_pem: env_req("GITHUB_PRIVATE_KEY_PEM")?,
+            github_private_key_pem: env_req("GITHUB_PRIVATE_KEY_PEM")?.replace("\\n", "\n"),
             github_webhook_secret: env_req("GITHUB_WEBHOOK_SECRET")?,
             database_url: env_req("DATABASE_URL")?,
             http_bind: env_opt("HTTP_BIND", "0.0.0.0:8080"),

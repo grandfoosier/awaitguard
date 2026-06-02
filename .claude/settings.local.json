@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(cargo check *)",
-      "Bash(cargo test *)"
+      "Bash(cargo test *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\rices\\\\Documents\\\\awaitguard\" -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(Sort-Object FullName)",
+      "Bash(grep -E \"\\\\.\\(md|txt|json|lock\\)$\")"
     ]
   }
 }

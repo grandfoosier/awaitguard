@@ -19,17 +19,25 @@ impl ExplainCache {
         hex::encode(h.finalize())
     }
 
-    pub async fn get(&self, key: &str) -> Result<Option<String>> {
+    /// Returns (why, fix) if cached.
+    pub async fn get(&self, key: &str) -> Result<Option<(String, String)>> {
         let row: Option<(String,)> = sqlx::query_as(
             "SELECT explanation_md FROM llm_explain_cache WHERE key = $1",
         )
         .bind(key)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.map(|(v,)| v))
+
+        Ok(row.and_then(|(v,)| {
+            let parsed: serde_json::Value = serde_json::from_str(&v).ok()?;
+            let why = parsed["why"].as_str().unwrap_or("").to_owned();
+            let fix = parsed["fix"].as_str().unwrap_or("").to_owned();
+            Some((why, fix))
+        }))
     }
 
-    pub async fn set(&self, key: &str, explanation: &str) -> Result<()> {
+    pub async fn set(&self, key: &str, why: &str, fix: &str) -> Result<()> {
+        let json = serde_json::json!({"why": why, "fix": fix}).to_string();
         sqlx::query(
             r#"
             INSERT INTO llm_explain_cache (key, explanation_md)
@@ -38,7 +46,7 @@ impl ExplainCache {
             "#,
         )
         .bind(key)
-        .bind(explanation)
+        .bind(json)
         .execute(&self.pool)
         .await?;
         Ok(())
