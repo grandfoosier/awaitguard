@@ -88,6 +88,7 @@ Both the app and Postgres start together. The app waits for the database to be h
 | `GITHUB_PRIVATE_KEY_PEM` | required | RSA private key (PEM format, `\n` OK) |
 | `GITHUB_WEBHOOK_SECRET` | required | Webhook HMAC secret |
 | `DATABASE_URL` | required | Postgres connection string |
+| `MAX_DB_CONNECTIONS` | `10` | Postgres connection pool size |
 | `HTTP_BIND` | `0.0.0.0:8080` | Address and port to listen on |
 | `MODE` | `all` | `api`, `worker`, or `all` |
 | `WORKER_CONCURRENCY` | `4` | Max parallel jobs |
@@ -97,8 +98,9 @@ Both the app and Postgres start together. The app waits for the database to be h
 | `MAX_PATCH_BYTES` | `200000` | Max patch size per file |
 | `MAX_FINDINGS` | `20` | Max findings reported per PR |
 | `LLM_ENABLED` | `false` | Enable LLM explanations |
-| `LLM_API_KEY` | — | OpenAI API key |
-| `LLM_MODEL` | `gpt-4.1-mini` | Model to use for explanations |
+| `LLM_PROVIDER` | `openai` | `openai` or `anthropic` |
+| `LLM_API_KEY` | — | API key for the selected provider |
+| `LLM_MODEL` | `gpt-4.1-mini` | Model name (e.g. `claude-haiku-4-5-20251001` for Anthropic) |
 | `LLM_TIMEOUT_SECS` | `20` | Per-request LLM timeout |
 | `MAX_LLM_EXPLAINS` | `3` | Top N findings sent to LLM |
 | `RUST_LOG` | `info` | Log level (`debug`, `info`, `warn`, `error`) |

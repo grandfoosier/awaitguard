@@ -6,7 +6,8 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\rices\\\\Documents\\\\awaitguard\" -Recurse -Force)",
       "Bash(Select-Object FullName)",
       "Bash(Sort-Object FullName)",
-      "Bash(grep -E \"\\\\.\\(md|txt|json|lock\\)$\")"
+      "Bash(grep -E \"\\\\.\\(md|txt|json|lock\\)$\")",
+      "Bash(cargo clippy *)"
     ]
   }
 }

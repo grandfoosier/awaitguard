@@ -72,7 +72,7 @@ async fn handle_pull_request(
         .unwrap_or("")
         .to_owned();
 
-    if repo_id == 0 || pr_number == 0 || head_sha.is_empty() {
+    if repo_id == 0 || pr_number == 0 || installation_id == 0 || head_sha.is_empty() {
         warn!("PR payload missing required fields");
         return (StatusCode::BAD_REQUEST, "missing required fields").into_response();
     }

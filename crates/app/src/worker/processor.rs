@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tracing::{info, instrument, warn};
 
 use crate::{
@@ -25,8 +25,8 @@ pub async fn process(
 
     tracing::info!(installation_id = job.installation_id, "Using installation token");
 
-    let parts: Vec<&str> = job.repo_full_name.splitn(2, '/').collect();
-    let (owner, repo) = (parts[0], parts[1]);
+    let (owner, repo) = job.repo_full_name.split_once('/')
+        .with_context(|| format!("invalid repo_full_name: {}", job.repo_full_name))?;
 
     let comment_store = CommentStore::new(pool.clone());
     let existing_comment_id = comment_store.get_comment_id(job.repo_id, job.pr_number).await?;
@@ -67,12 +67,13 @@ pub async fn process(
         .take(config.max_files)
         .collect();
 
-    let mut result = engine::analyze(&rust_files, &config).await?;
+    let mut result = engine::analyze(&rust_files, &config)?;
 
     // Optional LLM explanation step for the top findings
     if config.llm_enabled {
         if let Some(api_key) = &config.llm_api_key {
             let llm = LlmClient::new(
+                &config.llm_provider,
                 config.llm_model.clone(),
                 api_key.clone(),
                 config.llm_timeout_secs,

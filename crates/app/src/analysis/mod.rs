@@ -2,6 +2,7 @@ pub mod detectors;
 pub mod engine;
 pub mod formatter;
 pub mod llm;
+pub mod patch;
 pub mod scoring;
 
 use serde::{Deserialize, Serialize};

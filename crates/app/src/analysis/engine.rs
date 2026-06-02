@@ -1,10 +1,11 @@
 use anyhow::Result;
+use std::collections::HashSet;
 use tracing::info;
 
 use crate::{config::Config, github::models::ChangedFile};
 use super::{AnalysisResult, detectors, scoring};
 
-pub async fn analyze(files: &[ChangedFile], config: &Config) -> Result<AnalysisResult> {
+pub fn analyze(files: &[ChangedFile], config: &Config) -> Result<AnalysisResult> {
     let detectors = detectors::all();
     let mut all_findings = Vec::new();
 
@@ -29,8 +30,10 @@ pub async fn analyze(files: &[ChangedFile], config: &Config) -> Result<AnalysisR
         }
     }
 
-    // Deduplicate by (detector_id, snippet)
-    all_findings.dedup_by(|a, b| a.detector_id == b.detector_id && a.snippet == b.snippet);
+    // Deduplicate by (detector_id, path, snippet) — same pattern in different files is distinct.
+    // Use retain + HashSet so order is preserved and non-consecutive duplicates are caught.
+    let mut seen: HashSet<(String, String, String)> = HashSet::new();
+    all_findings.retain(|f| seen.insert((f.detector_id.clone(), f.path.clone(), f.snippet.clone())));
 
     // Sort by severity descending, cap at limit
     all_findings.sort_by(|a, b| b.severity.cmp(&a.severity));

@@ -6,6 +6,7 @@ pub struct Config {
     pub github_private_key_pem: String,
     pub github_webhook_secret: String,
     pub database_url: String,
+    pub max_db_connections: u32,
     pub http_bind: String,
     pub mode: String,
     pub worker_concurrency: usize,
@@ -24,13 +25,16 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self> {
-        Ok(Self {
+        let cfg = Self {
             github_app_id: env_req("GITHUB_APP_ID")?
                 .parse()
                 .context("GITHUB_APP_ID must be a number")?,
             github_private_key_pem: env_req("GITHUB_PRIVATE_KEY_PEM")?.replace("\\n", "\n"),
             github_webhook_secret: env_req("GITHUB_WEBHOOK_SECRET")?,
             database_url: env_req("DATABASE_URL")?,
+            max_db_connections: env_opt("MAX_DB_CONNECTIONS", "10")
+                .parse()
+                .context("MAX_DB_CONNECTIONS must be a number")?,
             http_bind: env_opt("HTTP_BIND", "0.0.0.0:8080"),
             mode: env_opt("MODE", "all"),
             worker_concurrency: env_opt("WORKER_CONCURRENCY", "4")
@@ -63,7 +67,17 @@ impl Config {
             llm_timeout_secs: env_opt("LLM_TIMEOUT_SECS", "20")
                 .parse()
                 .context("LLM_TIMEOUT_SECS must be a number")?,
-        })
+        };
+        if !matches!(cfg.mode.as_str(), "api" | "worker" | "all") {
+            anyhow::bail!("MODE must be one of: api, worker, all (got '{}')", cfg.mode);
+        }
+        if cfg.llm_enabled && !matches!(cfg.llm_provider.as_str(), "openai" | "anthropic") {
+            anyhow::bail!(
+                "LLM_PROVIDER must be openai or anthropic (got '{}')",
+                cfg.llm_provider
+            );
+        }
+        Ok(cfg)
     }
 }
 

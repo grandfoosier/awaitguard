@@ -1,10 +1,24 @@
 use regex::Regex;
+use std::sync::OnceLock;
 
 use crate::{
-    analysis::{Finding, Severity},
+    analysis::{patch::source_line_map, Finding, Severity},
     github::models::ChangedFile,
 };
 use super::Detector;
+
+static LOCK_RE: OnceLock<Regex> = OnceLock::new();
+static AWAIT_RE: OnceLock<Regex> = OnceLock::new();
+
+fn lock_re() -> &'static Regex {
+    LOCK_RE.get_or_init(|| {
+        Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*=.*\.(lock|read|write)\(\)\.await").unwrap()
+    })
+}
+
+fn await_re() -> &'static Regex {
+    AWAIT_RE.get_or_init(|| Regex::new(r"\.await").unwrap())
+}
 
 pub struct LockAcrossAwait;
 
@@ -19,24 +33,23 @@ impl Detector for LockAcrossAwait {
             None => return vec![],
         };
 
-        let lock_re =
-            Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*=.*\.(lock|read|write)\(\)\.await").unwrap();
-        let await_re = Regex::new(r"\.await").unwrap();
+        let lock_re = lock_re();
+        let await_re = await_re();
 
         struct Guard {
             name: String,
             lock_line: String,
-            line_hint: u32,
+            source_line: Option<u32>,
             depth: i32,
             is_added: bool,
         }
 
+        let line_map = source_line_map(patch);
         let mut active_guards: Vec<Guard> = Vec::new();
         let mut depth: i32 = 0;
-        let mut patch_line: u32 = 0;
         let mut findings = Vec::new();
 
-        for line in patch.lines() {
+        for (idx, line) in patch.lines().enumerate() {
             // Skip diff headers and removed lines
             if line.starts_with("+++")
                 || line.starts_with("---")
@@ -49,8 +62,7 @@ impl Detector for LockAcrossAwait {
             let is_added = line.starts_with('+');
             let content = line.get(1..).unwrap_or("");
             let trimmed = content.trim();
-
-            patch_line += 1;
+            let source_line = line_map.get(idx).copied().flatten();
 
             // Remove explicitly dropped guards before checking for awaits
             active_guards.retain(|g| {
@@ -58,28 +70,28 @@ impl Detector for LockAcrossAwait {
                     && !trimmed.contains(&format!("drop(&{})", g.name))
             });
 
-            // Fire when a guard is active and this line has .await, provided at least
+            // Fire for every active guard when this line has .await, provided at least
             // one of (lock acquisition, await line) is new — both being context means
             // the bug pre-existed this PR and we leave it alone.
             // Check BEFORE recording a new guard so the lock().await line itself
             // doesn't trigger against the guard it just acquired.
             if await_re.is_match(trimmed) {
-                if let Some(guard) = active_guards.last() {
+                for guard in &active_guards {
                     if is_added || guard.is_added {
-                    findings.push(Finding {
-                        detector_id: self.id().to_owned(),
-                        title: "Lock held across await".to_owned(),
-                        severity: Severity::High,
-                        path: file.path.clone(),
-                        line_hint: Some(guard.line_hint),
-                        snippet: format!("{}\n...\n{}", guard.lock_line, trimmed),
-                        details: None,
-                        suggestion: Some(
-                            "Drop the guard before awaiting. \
-                            Extract needed data first, or scope the guard with braces."
-                                .to_owned(),
-                        ),
-                    });
+                        findings.push(Finding {
+                            detector_id: self.id().to_owned(),
+                            title: "Lock held across await".to_owned(),
+                            severity: Severity::High,
+                            path: file.path.clone(),
+                            line_hint: guard.source_line,
+                            snippet: format!("{}\n...\n{}", guard.lock_line, trimmed),
+                            details: None,
+                            suggestion: Some(
+                                "Drop the guard before awaiting. \
+                                Extract needed data first, or scope the guard with braces."
+                                    .to_owned(),
+                            ),
+                        });
                     }
                 }
             }
@@ -90,7 +102,7 @@ impl Detector for LockAcrossAwait {
                 active_guards.push(Guard {
                     name,
                     lock_line: trimmed.to_owned(),
-                    line_hint: patch_line,
+                    source_line,
                     depth,
                     is_added,
                 });

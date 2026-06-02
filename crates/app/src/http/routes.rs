@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -14,6 +14,7 @@ pub fn router(state: Arc<WebhookState>) -> Router {
         .route("/webhook/github", post(handle_github_webhook))
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
+        .layer(DefaultBodyLimit::max(1024 * 1024))
         .with_state(state)
 }
 

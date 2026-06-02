@@ -20,7 +20,9 @@ async fn reset_stuck(pool: &PgPool, timeout_secs: u64) -> anyhow::Result<u64> {
     let result = sqlx::query(
         r#"
         UPDATE jobs
-           SET status = 'queued', updated_at = now()
+           SET status     = 'queued',
+               attempt    = attempt + 1,
+               updated_at = now()
          WHERE status = 'running'
            AND updated_at < now() - ($1::bigint * interval '1 second')
         "#,

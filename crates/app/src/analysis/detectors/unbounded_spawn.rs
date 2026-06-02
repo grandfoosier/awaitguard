@@ -1,10 +1,29 @@
 use regex::Regex;
+use std::sync::OnceLock;
 
 use crate::{
-    analysis::{Finding, Severity},
+    analysis::{patch::source_line_map, Finding, Severity},
     github::models::ChangedFile,
 };
 use super::Detector;
+
+static SPAWN_RE: OnceLock<Regex> = OnceLock::new();
+static LOOP_RE: OnceLock<Regex> = OnceLock::new();
+static JOIN_ALL_RE: OnceLock<Regex> = OnceLock::new();
+static FUTURES_UNORDERED_RE: OnceLock<Regex> = OnceLock::new();
+
+fn spawn_re() -> &'static Regex {
+    SPAWN_RE.get_or_init(|| Regex::new(r"tokio::spawn\s*\(").unwrap())
+}
+fn loop_re() -> &'static Regex {
+    LOOP_RE.get_or_init(|| Regex::new(r"\b(for\s+\w+\s+in|while\s+|loop\s*\{)").unwrap())
+}
+fn join_all_re() -> &'static Regex {
+    JOIN_ALL_RE.get_or_init(|| Regex::new(r"\bjoin_all\s*\(").unwrap())
+}
+fn futures_unordered_re() -> &'static Regex {
+    FUTURES_UNORDERED_RE.get_or_init(|| Regex::new(r"\bFuturesUnordered::new\s*\(\s*\)").unwrap())
+}
 
 pub struct UnboundedSpawn;
 
@@ -19,14 +38,15 @@ impl Detector for UnboundedSpawn {
             None => return vec![],
         };
 
-        let spawn_re = Regex::new(r"tokio::spawn\s*\(").unwrap();
-        let loop_re = Regex::new(r"\b(for\s+\w+\s+in|while\s+|loop\s*\{)").unwrap();
-        let join_all_re = Regex::new(r"\bjoin_all\s*\(").unwrap();
-        let futures_unordered_re = Regex::new(r"\bFuturesUnordered::new\s*\(\s*\)").unwrap();
+        let spawn_re = spawn_re();
+        let loop_re = loop_re();
+        let join_all_re = join_all_re();
+        let futures_unordered_re = futures_unordered_re();
 
         // All visible lines (context + added, not removed/headers), preserving order.
         // Used for the loop-lookback window so context loop headers are visible.
-        let visible: Vec<(u32, bool, &str)> = patch
+        let line_map = source_line_map(patch);
+        let visible: Vec<(Option<u32>, bool, &str)> = patch
             .lines()
             .enumerate()
             .filter(|(_, l)| {
@@ -38,13 +58,14 @@ impl Detector for UnboundedSpawn {
             .map(|(i, l)| {
                 let is_added = l.starts_with('+');
                 let content = l.get(1..).unwrap_or("").trim();
-                (i as u32 + 1, is_added, content)
+                let source_line = line_map.get(i).copied().flatten();
+                (source_line, is_added, content)
             })
             .collect();
 
         let mut findings = Vec::new();
 
-        for (idx, (line_num, is_added, content)) in visible.iter().enumerate() {
+        for (idx, (source_line, is_added, content)) in visible.iter().enumerate() {
             if *is_added && spawn_re.is_match(content) {
                 // Look back up to 8 visible lines for a loop construct
                 let start = idx.saturating_sub(8);
@@ -58,7 +79,7 @@ impl Detector for UnboundedSpawn {
                         title: "Unbounded tokio::spawn inside loop".to_owned(),
                         severity: Severity::High,
                         path: file.path.clone(),
-                        line_hint: Some(*line_num),
+                        line_hint: *source_line,
                         snippet: content.to_string(),
                         details: None,
                         suggestion: Some(
@@ -80,7 +101,7 @@ impl Detector for UnboundedSpawn {
                     title: "join_all on potentially unbounded collection".to_owned(),
                     severity: Severity::Medium,
                     path: file.path.clone(),
-                    line_hint: Some(*line_num),
+                    line_hint: *source_line,
                     snippet: content.to_string(),
                     details: None,
                     suggestion: Some(
@@ -96,7 +117,7 @@ impl Detector for UnboundedSpawn {
                     title: "FuturesUnordered without explicit bound".to_owned(),
                     severity: Severity::Medium,
                     path: file.path.clone(),
-                    line_hint: Some(*line_num),
+                    line_hint: *source_line,
                     snippet: content.to_string(),
                     details: None,
                     suggestion: Some(

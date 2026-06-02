@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
     observability::init();
 
     let config = Config::from_env()?;
-    let pool = db::connect(&config.database_url).await?;
+    let pool = db::connect(&config.database_url, config.max_db_connections).await?;
 
     sqlx::migrate!("./migrations").run(&pool).await?;
 

@@ -1,10 +1,19 @@
 use regex::Regex;
+use std::sync::OnceLock;
 
 use crate::{
-    analysis::{Finding, Severity},
+    analysis::{patch::source_line_map, Finding, Severity},
     github::models::ChangedFile,
 };
 use super::Detector;
+
+static COMPILED: OnceLock<Vec<Regex>> = OnceLock::new();
+
+fn compiled_patterns() -> &'static Vec<Regex> {
+    COMPILED.get_or_init(|| {
+        PATTERNS.iter().map(|p| Regex::new(p.re).unwrap()).collect()
+    })
+}
 
 pub struct BlockingInAsync;
 
@@ -71,10 +80,11 @@ impl Detector for BlockingInAsync {
             None => return vec![],
         };
 
-        let compiled: Vec<Regex> = PATTERNS.iter().map(|p| Regex::new(p.re).unwrap()).collect();
+        let compiled = compiled_patterns();
+        let line_map = source_line_map(patch);
         let mut findings = Vec::new();
 
-        for (line_num, line) in patch.lines().enumerate() {
+        for (idx, line) in patch.lines().enumerate() {
             if !line.starts_with('+') || line.starts_with("+++") {
                 continue;
             }
@@ -91,7 +101,7 @@ impl Detector for BlockingInAsync {
                         title: p.title.to_owned(),
                         severity: p.severity,
                         path: file.path.clone(),
-                        line_hint: Some(line_num as u32 + 1),
+                        line_hint: line_map.get(idx).copied().flatten(),
                         snippet: content.to_owned(),
                         details: None,
                         suggestion: Some(p.suggestion.to_owned()),
