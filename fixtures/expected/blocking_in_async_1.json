@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "detector_id": "blocking_in_async",
+      "title": "std::thread::sleep in async context",
+      "severity": "high",
+      "path": "fixtures/rust/blocking_in_async_1.rs"
+    }
+  ],
+  "risk_level": "high",
+  "min_risk_score": 6
+}
