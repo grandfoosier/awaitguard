@@ -13,7 +13,7 @@ const SUPPRESSION_LABEL: &str = "concurrency-ok";
 
 #[instrument(
     skip_all,
-    fields(job_id = job.id, repo = %job.repo_full_name, pr = job.pr_number, sha = %job.head_sha)
+    fields(job_id = job.id, repo = %job.repo_full_name, pr = job.pr_number, sha = %job.head_sha, attempt = job.attempt)
 )]
 pub async fn process(
     job: Job,

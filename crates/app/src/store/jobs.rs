@@ -11,7 +11,6 @@ pub struct Job {
     pub installation_id: i64,
     pub head_sha: String,
     pub attempt: i32,
-    pub status: String,
 }
 
 pub struct JobStore {
@@ -34,8 +33,10 @@ impl JobStore {
     ) -> Result<()> {
         let mut tx = self.pool.begin().await?;
 
+        // FOR UPDATE serializes concurrent updates to the same PR row so only one
+        // transaction proceeds when two webhooks arrive simultaneously.
         let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT head_sha FROM prs WHERE repo_id = $1 AND pr_number = $2",
+            "SELECT head_sha FROM prs WHERE repo_id = $1 AND pr_number = $2 FOR UPDATE",
         )
         .bind(repo_id)
         .bind(pr_number)
@@ -69,6 +70,7 @@ impl JobStore {
             r#"
             INSERT INTO jobs (kind, repo_id, repo_full_name, pr_number, installation_id, head_sha)
             VALUES ('analyze_pr', $1, $2, $3, $4, $5)
+            ON CONFLICT (repo_id, pr_number, head_sha) WHERE status IN ('queued', 'running') DO NOTHING
             "#,
         )
         .bind(repo_id)
@@ -96,7 +98,7 @@ impl JobStore {
                 LIMIT $1
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING id, repo_id, repo_full_name, pr_number, installation_id, head_sha, attempt, status
+            RETURNING id, repo_id, repo_full_name, pr_number, installation_id, head_sha, attempt
             "#,
         )
         .bind(limit)
